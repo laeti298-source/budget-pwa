@@ -1,4 +1,4 @@
-const STORAGE_KEY = "budget_depenses_v1";
+const STORAGE_KEY = "budget_depenses_v2";
 
 // Utilitaires
 function $(id){ return document.getElementById(id); }
@@ -9,7 +9,6 @@ function fmtEUR(n){
 }
 
 function getNowFrenchMonthKey(){
-  // YYYY-MM
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -17,44 +16,48 @@ function getNowFrenchMonthKey(){
 }
 
 function loadDepenses(){
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
+  catch { return []; }
 }
 function saveDepenses(list){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
 function sumByCategory(depenses, mois){
-  // renvoie { cat: total }
   const out = {};
-  depenses
-    .filter(d => d.mois === mois)
-    .forEach(d => {
-      out[d.categorie] = (out[d.categorie] || 0) + d.montant;
-    });
+  depenses.filter(d => d.mois === mois).forEach(d => {
+    out[d.categorie] = (out[d.categorie] || 0) + d.montant;
+  });
   return out;
+}
+
+function totalDepensesVariable(depenses, mois){
+  return depenses
+    .filter(d => d.mois === mois)
+    .reduce((acc, d) => acc + (Number(d.montant) || 0), 0);
 }
 
 function renderDepenses(depenses){
   const mois = $("moisSel").value;
-
   const totals = sumByCategory(depenses, mois);
-  const categories = Object.keys(totals).length
-    ? Object.keys(totals)
-    : ["Courses", "Loisirs", "Médecins", "Restaurant", "Vacances", "Autres"];
+
+  const categories = [
+    "Courses",
+    "Loisirs",
+    "Médecins",
+    "Restaurant",
+    "Vacances",
+    "Autres"
+  ];
 
   $("depensesResult").innerHTML = "";
 
   let globalTotal = 0;
+
   categories.forEach(cat => {
     const t = totals[cat] || 0;
     globalTotal += t;
 
-    // Pour l’instant: pas de budget mensuel par catégorie (donc statut vide).
-    // On affiche seulement le total, comme tu l’as demandé.
     const row = document.createElement("div");
     row.className = "row";
     row.innerHTML = `
@@ -67,101 +70,146 @@ function renderDepenses(depenses){
   const totalRow = document.createElement("div");
   totalRow.className = "row";
   totalRow.innerHTML = `
-    <div style="font-weight:800">Total</div>
+    <div style="font-weight:800">Total dépenses variables (${mois})</div>
     <div style="font-weight:800">${fmtEUR(globalTotal)}</div>
   `;
   $("depensesResult").appendChild(totalRow);
 }
 
+function calculerReste(){
+  const depenses = loadDepenses();
+  const mois = $("moisSel").value;
+
+  const salaire = safeNum($("salaire").value);
+  const pension = safeNum($("pension").value);
+  const caf = safeNum($("caf").value);
+  const loyer = safeNum($("loyer").value);
+  const epargne = safeNum($("epargne").value);
+
+  const revenus = salaire + pension + caf;
+
+  // Fixes (loyer + épargne)
+  const chargesFixes = loyer + epargne;
+
+  // Courses "fixes" (tu avais 250 €/mois)
+  const coursesFixes = 250;
+
+  // Dépenses variables ajoutées par toi pour le mois sélectionné
+  const variables = totalDepensesVariable(depenses, mois);
+
+  const totalDepenses = chargesFixes + coursesFixes + variables;
+  const reste = revenus - totalDepenses;
+
+  const badge = reste >= 0
+    ? `<span class="badge ok">OK</span>`
+    : `<span class="badge bad">Déficit</span>`;
+
+  $("resultat").innerHTML = `
+    <div style="margin-bottom:8px;">${badge}</div>
+    <div>Reste après charges + épargne + dépenses variables (${mois})</div>
+    <div style="font-size:22px; font-weight:900; margin-top:6px;">${fmtEUR(reste)}</div>
+  `;
+
+  return reste;
+}
+
 function buildUI(){
   $("app").innerHTML = `
-    <h2>Simulateur Budget</h2>
+    <h2>Tableau de Bord</h2>
 
-    <div class="card" id="cardSimu">
-      <div class="sub-title">Revenus et charges</div>
-      <div class="grid">
-        <label>Salaire : <input type="number" id="salaire" value="2006" step="0.01"></label>
-        <label>Pension : <input type="number" id="pension" value="180" step="0.01"></label>
-        <label>CAF : <input type="number" id="caf" value="355" step="0.01"></label>
-        <label>Loyer : <input type="number" id="loyer" value="605" step="0.01"></label>
-        <label>Épargne : <input type="number" id="epargne" value="500" step="0.01"></label>
-      </div>
+    <div id="cardSimu" class="card">
+      <div class="sub-title">Simulateur Budget</div>
+
+      <label>Salaire : <input type="number" id="salaire" value="2006" step="0.01"></label>
+      <label>Pension : <input type="number" id="pension" value="180" step="0.01"></label>
+      <label>CAF : <input type="number" id="caf" value="355" step="0.01"></label>
+      <label>Loyer : <input type="number" id="loyer" value="605" step="0.01"></label>
+      <label>Épargne : <input type="number" id="epargne" value="500" step="0.01"></label>
+
+      <label>Mois (pour dépenses variables) :
+        <input type="month" id="moisSel" value="${getNowFrenchMonthKey()}">
+      </label>
 
       <button class="primary" id="btnCalculer">Calculer</button>
-      <div id="resultat" class="result"></div>
 
-      <div class="spacer"></div>
-      <button class="secondary" id="btnGoDepenses">Aller aux Dépenses</button>
+      <div id="resultat" class="result"></div>
     </div>
 
-    <h2 style="margin-top:28px;">Dépenses</h2>
+    <div style="height:18px;"></div>
 
-    <div class="card" id="cardDepenses" style="display:none;">
-      <div class="sub-title">Ajouter une dépense</div>
+    <div id="cardDepenses" class="card">
+      <div class="sub-title">Dépenses (variables)</div>
 
-      <div class="grid">
-        <label>Montant (€) : <input type="number" id="mDepense" step="0.01"></label>
+      <label>Montant (€) : <input type="number" id="mDepense" step="0.01"></label>
 
-        <label>Catégorie :
-          <select id="catDepense">
-            <option>Courses</option>
-            <option>Loisirs</option>
-            <option>Médecins</option>
-            <option>Restaurant</option>
-            <option>Vacances</option>
-            <option>Autres</option>
-          </select>
-        </label>
-
-        <label>Mois :
-          <input type="month" id="moisSel" value="${getNowFrenchMonthKey()}">
-        </label>
-      </div>
+      <label>Catégorie :
+        <select id="catDepense">
+          <option>Courses</option>
+          <option>Loisirs</option>
+          <option>Médecins</option>
+          <option>Restaurant</option>
+          <option>Vacances</option>
+          <option>Autres</option>
+        </select>
+      </label>
 
       <button class="primary" id="btnAjouterDepense">Ajouter</button>
 
       <div class="spacer"></div>
+
       <div class="sub-title">Totaux mensuels (par catégorie)</div>
       <div id="depensesResult" class="resultRows"></div>
 
       <div class="spacer"></div>
-      <button class="secondary" id="btnRetourSimu">Retour Simulateur</button>
+
+      <button class="secondary" id="btnMaj">Mettre à jour le simulateur</button>
     </div>
   `;
+
+  const depCss = `
+    .card{ margin-top:12px; padding:16px; background:#fff; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,0.06); }
+    .sub-title{ font-weight:900; margin-bottom:10px; }
+    .primary{ width:100%; padding:12px; background:#2563eb; color:#fff; border:none; border-radius:10px; font-size:16px; cursor:pointer; margin-top:12px; }
+    .secondary{ width:100%; padding:12px; background:#e5e7eb; color:#111; border:none; border-radius:10px; font-size:16px; cursor:pointer; margin-top:12px; }
+    .result{ margin-top:14px; padding:14px; background:#e0f2fe; border-radius:10px; color:#075985; text-align:center; font-weight:800; }
+    .spacer{ height:14px; }
+    .resultRows{ margin-top:8px; background:#f9fafb; border-radius:10px; padding:10px; }
+    .row{ display:flex; justify-content:space-between; gap:12px; padding:8px 4px; border-bottom:1px solid #eef2f7; }
+    .row:last-child{ border-bottom:none; }
+    .badge{ padding:6px 10px; border-radius:999px; font-weight:900; font-size:12px; display:inline-block; }
+    .badge.ok{ background:#dcfce7; color:#14532d; }
+    .badge.bad{ background:#fee2e2; color:#7f1d1d; }
+    select, input[type="number"], input[type="month"]{
+      width: 100%;
+      margin-top:6px;
+      padding:8px 10px;
+      border:1px solid #e5e7eb;
+      border-radius:10px;
+      background:#fff;
+      box-sizing:border-box;
+    }
+  `;
+
+  const styleEl = document.createElement("style");
+  styleEl.innerHTML = depCss;
+  document.head.appendChild(styleEl);
 }
 
 function wireEvents(){
-  // simulateur
   $("btnCalculer").addEventListener("click", () => {
-    const salaire = safeNum($("salaire").value);
-    const pension = safeNum($("pension").value);
-    const caf = safeNum($("caf").value);
-    const loyer = safeNum($("loyer").value);
-    const epargne = safeNum($("epargne").value);
-    const courses = 250;
-
-    const revenus = salaire + pension + caf;
-    const depenses = loyer + epargne + courses;
-    const reste = revenus - depenses;
-
-    $("resultat").innerHTML = `Reste après charges et épargne : <b>${fmtEUR(reste)}</b>`;
+    calculerReste();
   });
 
-  // navigation
-  $("btnGoDepenses").addEventListener("click", () => {
-    $("cardSimu").style.display = "none";
-    $("cardDepenses").style.display = "block";
-
-    const depenses = loadDepenses();
-    renderDepenses(depenses);
+  $("btnMaj").addEventListener("click", () => {
+    renderDepenses(loadDepenses());
+    calculerReste();
   });
 
-  $("btnRetourSimu").addEventListener("click", () => {
-    $("cardDepenses").style.display = "none";
-    $("cardSimu").style.display = "block";
+  $("moisSel").addEventListener("change", () => {
+    renderDepenses(loadDepenses());
+    calculerReste();
   });
 
-  // ajouter depense
   $("btnAjouterDepense").addEventListener("click", () => {
     const montant = safeNum($("mDepense").value);
     const categorie = $("catDepense").value;
@@ -178,7 +226,7 @@ function wireEvents(){
 
     const depenses = loadDepenses();
     depenses.push({
-      id: crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
       montant,
       categorie,
       mois,
@@ -186,44 +234,18 @@ function wireEvents(){
     });
     saveDepenses(depenses);
 
-    // reset champs simples
     $("mDepense").value = "";
     renderDepenses(depenses);
-  });
-
-  // change mois
-  $("moisSel").addEventListener("change", () => {
-    const depenses = loadDepenses();
-    renderDepenses(depenses);
+    calculerReste();
   });
 }
 
 function start(){
-  // injection UI
   buildUI();
-
-  // style additions (au cas où)
-  // (on évite de toucher style.css pour l’instant)
-  const depCss = `
-    .card{ margin-top:12px; padding:16px; background:#fff; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,0.06); }
-    .sub-title{ font-weight:800; margin-bottom:10px; }
-    .grid{ display:flex; flex-direction:column; gap:12px; }
-    .primary{ width:100%; padding:12px; background:#2563eb; color:#fff; border:none; border-radius:10px; font-size:16px; cursor:pointer; }
-    .secondary{ width:100%; padding:12px; background:#e5e7eb; color:#111; border:none; border-radius:10px; font-size:16px; cursor:pointer; }
-    .result{ margin-top:14px; padding:14px; background:#e0f2fe; border-radius:10px; color:#075985; text-align:center; font-weight:700; }
-    .spacer{ height:14px; }
-    .resultRows{ margin-top:8px; background:#f9fafb; border-radius:10px; padding:10px; }
-    .row{ display:flex; justify-content:space-between; gap:12px; padding:8px 4px; border-bottom:1px solid #eef2f7; }
-    .row:last-child{ border-bottom:none; }
-  `;
-  const styleEl = document.createElement("style");
-  styleEl.innerHTML = depCss;
-  document.head.appendChild(styleEl);
-
   wireEvents();
-
-  // initial render
-  $("cardDepenses").style.display = "none";
+  const depenses = loadDepenses();
+  renderDepenses(depenses);
+  calculerReste();
 }
 
 document.addEventListener("DOMContentLoaded", start);
