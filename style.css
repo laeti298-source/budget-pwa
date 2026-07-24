@@ -1,3 +1,7 @@
 body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
-h1 { color: #333; }
-#app { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+#app { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+h2 { margin-top: 0; color: #333; }
+label { display: block; margin-bottom: 10px; font-weight: bold; }
+input { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+button { width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 6px; margin-top: 15px; font-size: 16px; }
+#resultat { margin-top: 20px; padding: 15px; background: #e0f2fe; border-radius: 8px; color: #075985; text-align: center; }
