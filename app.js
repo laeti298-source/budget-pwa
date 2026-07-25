@@ -84,12 +84,13 @@ function calculerReste(){
   const pension = safeNum($("pension").value);
   const caf = safeNum($("caf").value);
   const loyer = safeNum($("loyer").value);
+  const prelevements = safeNum($("prelevements").value);
   const epargne = safeNum($("epargne").value);
 
   const revenus = salaire + pension + caf;
 
-  // Fixes (loyer + épargne)
-  const chargesFixes = loyer + epargne;
+  // Fixes (loyer + prélèvements)
+  const chargesFixes = loyer + prelevements;
 
   // Courses "fixes" (tu avais 250 €/mois)
   const coursesFixes = 250;
@@ -97,7 +98,9 @@ function calculerReste(){
   // Dépenses variables ajoutées par toi pour le mois sélectionné
   const variables = totalDepensesVariable(depenses, mois);
 
-  const totalDepenses = chargesFixes + coursesFixes + variables;
+  // Total = chargesFixes + épargne + coursesFixes + variables
+  const totalDepenses = chargesFixes + epargne + coursesFixes + variables;
+
   const reste = revenus - totalDepenses;
 
   const badge = reste >= 0
@@ -124,6 +127,9 @@ function buildUI(){
       <label>Pension : <input type="number" id="pension" value="180" step="0.01"></label>
       <label>CAF : <input type="number" id="caf" value="355" step="0.01"></label>
       <label>Loyer : <input type="number" id="loyer" value="605" step="0.01"></label>
+
+      <label>Prélèvements : <input type="number" id="prelevements" value="154.78" step="0.01"></label>
+
       <label>Épargne : <input type="number" id="epargne" value="500" step="0.01"></label>
 
       <label>Mois (pour dépenses variables) :
@@ -248,4 +254,4 @@ function start(){
   calculerReste();
 }
 
-document.addEventListener("DOMContentLoaded", start);
+start();
