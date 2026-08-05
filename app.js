@@ -1,4 +1,16 @@
 const STORAGE_KEY = "budget_depenses_v2";
+const STORAGE_KEY_BASE = "budget_base_v1";
+const STORAGE_KEY_SOLDES = "budget_soldes_v1";
+
+// Valeurs par défaut (utilisées uniquement si rien n'a encore été enregistré)
+const DEFAULT_BASE = {
+  salaire: 2006,
+  pension: 180,
+  caf: 355,
+  loyer: 605,
+  prelevements: 154.78,
+  epargne: 500
+};
 
 // Utilitaires
 function $(id){ return document.getElementById(id); }
@@ -15,12 +27,54 @@ function getNowFrenchMonthKey(){
   return `${y}-${m}`;
 }
 
+// Renvoie la clé "YYYY-MM" du mois précédent celui passé en paramètre
+function getPrevMonthKey(moisKey){
+  const [y, m] = moisKey.split("-").map(Number);
+  let py = y, pm = m - 1;
+  if (pm === 0){ pm = 12; py = y - 1; }
+  return `${py}-${String(pm).padStart(2, "0")}`;
+}
+
+// ---- Dépenses variables ----
 function loadDepenses(){
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
   catch { return []; }
 }
 function saveDepenses(list){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+// ---- Montants de base (salaire, loyer, etc.) ----
+function loadBase(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY_BASE) || "null");
+    return Object.assign({}, DEFAULT_BASE, saved || {});
+  } catch {
+    return Object.assign({}, DEFAULT_BASE);
+  }
+}
+function saveBase(base){
+  localStorage.setItem(STORAGE_KEY_BASE, JSON.stringify(base));
+}
+function saveBaseFromInputs(){
+  const base = {
+    salaire: safeNum($("salaire").value),
+    pension: safeNum($("pension").value),
+    caf: safeNum($("caf").value),
+    loyer: safeNum($("loyer").value),
+    prelevements: safeNum($("prelevements").value),
+    epargne: safeNum($("epargne").value)
+  };
+  saveBase(base);
+}
+
+// ---- Soldes mensuels (pour le report d'un mois sur l'autre) ----
+function loadSoldes(){
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY_SOLDES) || "{}"); }
+  catch { return {}; }
+}
+function saveSoldes(soldes){
+  localStorage.setItem(STORAGE_KEY_SOLDES, JSON.stringify(soldes));
 }
 
 function sumByCategory(depenses, mois){
@@ -77,6 +131,10 @@ function renderDepenses(depenses){
 }
 
 function calculerReste(){
+  // On sauvegarde toujours les montants de base au moment du calcul,
+  // pour ne jamais perdre ce qui a été saisi.
+  saveBaseFromInputs();
+
   const depenses = loadDepenses();
   const mois = $("moisSel").value;
 
@@ -101,36 +159,56 @@ function calculerReste(){
   // Total = chargesFixes + épargne + coursesFixes + variables
   const totalDepenses = chargesFixes + epargne + coursesFixes + variables;
 
-  const reste = revenus - totalDepenses;
+  const resteBrut = revenus - totalDepenses;
+
+  // Report du solde du mois précédent (déficit ou excédent)
+  const soldes = loadSoldes();
+  const moisPrecedent = getPrevMonthKey(mois);
+  const report = soldes[moisPrecedent] !== undefined ? soldes[moisPrecedent] : 0;
+
+  const reste = resteBrut + report;
+
+  // On enregistre le solde de ce mois pour qu'il puisse être repris par le mois suivant
+  soldes[mois] = reste;
+  saveSoldes(soldes);
 
   const badge = reste >= 0
     ? `<span class="badge ok">OK</span>`
     : `<span class="badge bad">Déficit</span>`;
 
+  const ligneReport = report !== 0
+    ? `<div style="font-size:13px; margin-top:4px; opacity:0.8;">
+         Dont report du mois précédent : ${report >= 0 ? "+" : ""}${fmtEUR(report)}
+       </div>`
+    : "";
+
   $("resultat").innerHTML = `
     <div style="margin-bottom:8px;">${badge}</div>
     <div>Reste après charges + épargne + dépenses variables (${mois})</div>
     <div style="font-size:22px; font-weight:900; margin-top:6px;">${fmtEUR(reste)}</div>
+    ${ligneReport}
   `;
 
   return reste;
 }
 
 function buildUI(){
+  const base = loadBase();
+
   $("app").innerHTML = `
     <h2>Tableau de Bord</h2>
 
     <div id="cardSimu" class="card">
       <div class="sub-title">Simulateur Budget</div>
 
-      <label>Salaire : <input type="number" id="salaire" value="2006" step="0.01"></label>
-      <label>Pension : <input type="number" id="pension" value="180" step="0.01"></label>
-      <label>CAF : <input type="number" id="caf" value="355" step="0.01"></label>
-      <label>Loyer : <input type="number" id="loyer" value="605" step="0.01"></label>
+      <label>Salaire : <input type="number" id="salaire" value="${base.salaire}" step="0.01"></label>
+      <label>Pension : <input type="number" id="pension" value="${base.pension}" step="0.01"></label>
+      <label>CAF : <input type="number" id="caf" value="${base.caf}" step="0.01"></label>
+      <label>Loyer : <input type="number" id="loyer" value="${base.loyer}" step="0.01"></label>
 
-      <label>Prélèvements : <input type="number" id="prelevements" value="154.78" step="0.01"></label>
+      <label>Prélèvements : <input type="number" id="prelevements" value="${base.prelevements}" step="0.01"></label>
 
-      <label>Épargne : <input type="number" id="epargne" value="500" step="0.01"></label>
+      <label>Épargne : <input type="number" id="epargne" value="${base.epargne}" step="0.01"></label>
 
       <label>Mois (pour dépenses variables) :
         <input type="month" id="moisSel" value="${getNowFrenchMonthKey()}">
@@ -214,6 +292,14 @@ function wireEvents(){
   $("moisSel").addEventListener("change", () => {
     renderDepenses(loadDepenses());
     calculerReste();
+  });
+
+  // Sauvegarde automatique des montants de base dès qu'un champ est modifié,
+  // pour qu'ils ne se réinitialisent plus jamais.
+  ["salaire", "pension", "caf", "loyer", "prelevements", "epargne"].forEach(id => {
+    $(id).addEventListener("input", () => {
+      saveBaseFromInputs();
+    });
   });
 
   $("btnAjouterDepense").addEventListener("click", () => {
